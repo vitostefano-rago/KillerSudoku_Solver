@@ -702,7 +702,7 @@ def WriteDifficulty(dl):
 	global tl
 	global cols
 	
-	ml = {1: "Easy", 2: "Easy", 4: "Medium", 8: "Medium",  16: "Hard", 32: "Extreme", 64: "Evil"}
+	ml = {1: "Easy", 2: "Easy", 4: "Medium", 8: "Medium", 16: "Hard", 32: "Hard", 64: "Very hard", 128: "Very hard", 256: "Extreme", 512: "Extreme", 1024: "Evil"}
 	ws = rs + tl + cols - (rs + tl) % cols
 	pygame.draw.rect(window, (255,255,255), [ws/2 + 250, ws + tl, 150, 100], 0)
 	tfont = pygame.font.SysFont("Arial", 30)

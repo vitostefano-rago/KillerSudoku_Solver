@@ -62,7 +62,7 @@ def main():
 									KSModules.KSGUI.UpdateValues(tmp[0])
 									KSModules.KSImageOutput.AddNextStep(tmp[0])
 									cs = tmp[0].sdk
-									if mxdff < 16:
+									if mxdff < 1024:
 										KSModules.KSGUI.DspAllVals(1)
 									else:
 										KSModules.KSGUI.DspAllVals(2)

@@ -10,6 +10,9 @@ gl = []
 ccn = 0
 cgs = set()
 indeadend = 0
+mysinglecombos = dict()
+mymulticombos = dict()
+
 
 class MyCage:
 	def __init__(self,clls,tot):
@@ -122,8 +125,56 @@ def CheckCellGroup(row,col):
 			gv.add(sudoku[cntr][cntc])
 	return gv
 
+def GiveMeCombo(lngth, tot, mode):
+	global mysinglecombos
+	global mymulticombos
+	global posnum
+	
+	#mode 0 means only one occurrence, mode 1 means multiple occurrences
+	if mode == 0:
+		if lngth in mysinglecombos.keys():
+			if tot not in mysinglecombos[lngth].keys():
+				mylst = list()
+				pl = list(posnum)
+				for var in combinations(pl, lngth):
+					if sum(var) == tot:
+						mylst.extend(var)
+				sls = set(mylst)
+				mysinglecombos[lngth][tot] = sls
+			return mysinglecombos[lngth][tot]
+		else:
+			mysinglecombos[lngth] = dict()
+			mylst = list()
+			pl = list(posnum)
+			for var in combinations(pl, lngth):
+				if sum(var) == tot:
+					mylst.extend(var)
+			sls = set(mylst)
+			mysinglecombos[lngth][tot] = sls
+			return mysinglecombos[lngth][tot]
+	else:
+		if lngth in mymulticombos.keys():
+			if tot not in mymulticombos[lngth].keys():
+				mylst = list()
+				pl = list(posnum)
+				for var in combinations_with_replacement(pl, lngth):
+					if sum(var) == tot:
+						mylst.extend(var)
+				sls = set(mylst)
+				mymulticombos[lngth][tot] = sls
+			return mymulticombos[lngth][tot]
+		else:
+			mymulticombos[lngth] = dict()
+			mylst = list()
+			pl = list(posnum)
+			for var in combinations_with_replacement(pl, lngth):
+				if sum(var) == tot:
+					mylst.extend(var)
+			sls = set(mylst)
+			mymulticombos[lngth][tot] = sls
+			return mymulticombos[lngth][tot]
 
-#This returns the values that could be possibly written into all cells - made possible by specific values written into cells
+#This returns the values that could be possibly written into all cells - made possible by specific values written into the other cells
 def BasicSolutions():
 	global sudoku
 	global cols
@@ -144,6 +195,7 @@ def BasicSolutions():
 	return ev
 
 #This says if a cage is bound to contain different numbers only
+#Input is set of cells in the cage
 def SingleOccurrence(mcs):
 	global div
 	
@@ -163,9 +215,11 @@ def CageSolutions():
 	global sudoku
 	global posnum
 	fv = [[set() for _ in range(cols)] for _ in range(rows)]
+	cgdclls = set()
 	
 	for mcg in cgs:
 		cl = mcg.clls
+		cgdclls.update(cl)
 		tt = int(mcg.tot)
 		mycl = set()
 		for c in cl:
@@ -174,20 +228,22 @@ def CageSolutions():
 			else:
 				tt -= sudoku[c[0]][c[1]]
 		
-		mylst = list()
+		sls = set()
 		pl = list(posnum)
 		
 		if SingleOccurrence(mycl):
-			for var in combinations(pl, len(mycl)):
-				if sum(var) == tt:
-					mylst.extend(var)
+			sls = GiveMeCombo(len(mycl),tt,0)
+		
 		else:
-			for var in combinations_with_replacement(pl, len(mycl)):
-				if sum(var) == tt:
-					mylst.extend(var)
+			sls = GiveMeCombo(len(mycl),tt,1)
 		
 		for elemnt in mycl:
-			fv[elemnt[0]][elemnt[1]] = set(mylst)
+			fv[elemnt[0]][elemnt[1]] = sls
+	
+	for row in range(rows):
+		for col in range(cols):
+			if(row, col) not in cgdclls:
+				fv[row][col] = posnum
 	
 	return fv
 
@@ -196,6 +252,7 @@ def CheckSolutions():
 	global sudoku
 	global rows
 	global cols
+	global posnum
 	
 	ev = BasicSolutions()
 	fv = CageSolutions()
@@ -204,7 +261,7 @@ def CheckSolutions():
 	
 	for c in range(cols):
 		for r in range(rows):
-			for i in range(1, rows + 1):
+			for i in posnum:
 				if i in ev[c][r] and i in fv[c][r]:
 					gv[c][r].add(i)
 	
@@ -239,15 +296,17 @@ def SimpleSolution(fv):
 	return rv
 
 
-#Looks for cells with the only possible occurence of a value in the given row, column or subrectangle
+#Looks for cells with the only possible occurence of a value in the given row, column nonet or cage
 def IntermediateSolution(fv):
 	global sudoku
 	global cols
 	global rows
 	global div
 	global posnum
-	#fv = CheckSolutions()
+	global cgs
+	
 	rv = 0
+	#Check traditional sudoku parts
 	for cntr in range(rows):
 		for cntc in range(cols):
 			if sudoku[cntr][cntc] == 0:
@@ -276,8 +335,43 @@ def IntermediateSolution(fv):
 						sudoku[cntr][cntc] = cnt
 						rv = 1
 						break
+	
+	if rv == 1:
+		return rv
+	
+	#Check cages
+	for cg in cgs:
+		cl = cg.clls
+		bc = 0
+		allposs = set()
+		
+		for mc in cl:
+			if sudoku[mc[0]][mc[1]] == 0:
+				bc += 1
+		
+		if bc != 0:
+			for sc in cl:
+				for i in posnum:
+					if i in fv[sc[0]][sc[1]]:
+						allposs.add(i)
+		
+		#If, for how the cage is positioned, every number is guaranteed to be in it only once, and number of blank cells equals number of possible solutions
+		if SingleOccurrence(cl) and bc == len(allposs) and bc != 0:
+			for ccl in cl:
+				mysls = set()
+				for cccl in cl:
+					if ccl != cccl:
+						for i in fv[cccl[0]][cccl[1]]:
+							mysls.add(i)
+				for j in posnum:
+					if j in fv[ccl[0]][ccl[1]] and j not in mysls:
+						sudoku[ccl[0]][ccl[1]] = j
+						rv = 1
+	
+	
 	return rv
 
+#If some numbers are guaranteed to be in given cells of the row/cage/nonet, eliminate them from the possibilities of the others
 def KillerElimination(fv):
 	global cgs
 	global sudoku
@@ -298,18 +392,17 @@ def KillerElimination(fv):
 			else:
 				tt -= sudoku[c[0]][c[1]]
 		
-		mylst = list()
+		sls = set()
 		pl = list(posnum)
 		
 		if SingleOccurrence(mycl):
-			for var in combinations(pl, len(mycl)):
-				if sum(var) == tt:
-					mylst.extend(var)
+			sls = GiveMeCombo(len(mycl),tt,0)
 		
 		#Case there is no uncertainity about the fact that all the given numbers are in the given cage
-		if len(mylst) == len(mycl):
+		if len(sls) == len(mycl):
 			rwv, clv, sr, sc = -10, -10, -10, -10
 			rw, cl, scg = set(), set(), set()
+			
 			#Eliminate from row (if possible):
 			for cll in mycl:
 				rw.add(cll[0])
@@ -319,8 +412,9 @@ def KillerElimination(fv):
 			else:
 				for c in range(cols):
 					if (rwv,c) not in mycl:
-						for myelem in mylst:
+						for myelem in sls:
 							rv[rwv][c].discard(myelem)
+			
 			#Eliminate from column (if possible)
 			for rww in mycl:
 				cl.add(rww[1])
@@ -330,10 +424,12 @@ def KillerElimination(fv):
 			else:
 				for r in range(rows):
 					if (r, clv) not in mycl:
-						for myelem in mylst:
+						for myelem in sls:
 							rv[r][clv].discard(myelem)
+			
+			#Eliminate from nonet
 			for scc in mycl:
-				sr, sc =  scc[0] - scc[0] % div[1], scc[1] - scc[1] % div[0]
+				sr, sc = scc[0] - scc[0] % div[1], scc[1] - scc[1] % div[0]
 				scg.add((sr,sc))
 				if len(scg) > 1:
 					break
@@ -341,18 +437,267 @@ def KillerElimination(fv):
 				for cntr in range(sr,sr+div[1]):
 					for cntc in range(sc,sc + div[0]):
 						if (cntr, cntc) not in mycl:
-							for myelem in mylst:
+							for myelem in sls:
 								rv[cntr][cntc].discard(myelem)
 	
 	return rv
 
+def EliminateInvalid(fv):
+	global cgs
+	global sudoku
+	global posnum
+	
+	rv = fv[:][:]
+	
+	for mcg in cgs:
+		cl = mcg.clls
+		tt = int(mcg.tot)
+		mycl = set()
+		mysols = set()
+		tbe = set()
+		for c in cl:
+			if sudoku[c[0]][c[1]] == 0:
+				mycl.add(c)
+				for i in posnum:
+					if i in rv[c[0]][c[1]]:
+						mysols.add(i)
+			else:
+				tt -= sudoku[c[0]][c[1]]
+		
+		#Not to be replaced by the GiveMeCombo function! 
+		#Used only seldomly and not combinations of all numbers inside posnum, GiveMeCombo does not handle this!
+		for mynum in mysols:
+			mysollst = list(mysols)
+			if SingleOccurrence(mycl):
+				mycmbs = combinations(mysollst, len(mycl))
+			else:
+				mycmbs = combinations_with_replacement(mysollst, len(mycl))
+			for tr in mycmbs:
+				if sum(tr) == tt and mynum in tr:
+					break
+			else:
+				tbe.add(mynum)
+		
+		for elim in tbe:
+			for ccl in mycl:
+				rv[ccl[0]][ccl[1]].discard(elim)
+	
+	return rv
+
+
+#Create cages from cell outside a given row/colum/nonet, eliminate elements from original cages based on them
+def OutsideFortyFive(fv):
+	global sudoku
+	global cgs
+	global posnum
+	global rows
+	global cols
+	global div
+	
+	rv = fv[:][:]
+	ff = -1*(cols+1)*cols*0.5
+	ocg = set()
+	
+	for row in range(rows):
+		mycls = {(row,i) for i in range(cols) if sudoku[row][i] == 0}
+		ccg = MyCage(set(), ff)
+		for i in range(cols):
+			ccg.tot += sudoku[row][i]
+		for cg in cgs:
+			for cl in mycls:
+				if cl in ccg.clls:
+					continue
+				if cl in cg.clls and cl not in ccg.clls:
+					ccg.tot += int(cg.tot)
+					for mc in cg.clls:
+						if sudoku[mc[0]][mc[1]] == 0:
+							ccg.clls.add((mc[0],mc[1]))
+						else:
+							ccg.tot -= sudoku[mc[0]][mc[1]]
+					break
+		for elim in mycls:
+			ccg.clls.discard(elim)
+		ocg.add(ccg)
+	
+	for col in range(cols):
+		mycls = {(i,col) for i in range(rows) if sudoku[i][col] == 0}
+		ccg = MyCage(set(), ff)
+		for i in range(rows):
+			ccg.tot += sudoku[i][col]
+		for cg in cgs:
+			for cl in mycls:
+				if cl in ccg.clls:
+					continue
+				if cl in cg.clls and cl not in ccg.clls:
+					ccg.tot += int(cg.tot)
+					for mc in cg.clls:
+						if sudoku[mc[0]][mc[1]] == 0:
+							ccg.clls.add((mc[0],mc[1]))
+						else:
+							ccg.tot -= sudoku[mc[0]][mc[1]]
+					break
+		for elim in mycls:
+			ccg.clls.discard(elim)
+		ocg.add(ccg)
+	
+	for r in range(int(rows/div[1])):
+		for c in range(int(cols/div[0])):
+			mycls = {(r*div[1] + i,c*div[0] + j) for i in range(div[1]) for j in range(div[0]) if sudoku[r*div[1] + i][c*div[0] + j] == 0}
+			ccg = MyCage(set(), ff)
+			for i in range(div[1]):
+				for j in range(div[0]):
+					ccg.tot += sudoku[r*div[1] + i][c*div[0] + j]
+			for cg in cgs:
+				for cl in mycls:
+					if cl in ccg.clls:
+						continue
+					if cl in cg.clls and cl not in ccg.clls:
+						ccg.tot += int(cg.tot)
+						for mc in cg.clls:
+							if sudoku[mc[0]][mc[1]] == 0:
+								ccg.clls.add((mc[0],mc[1]))
+							else:
+								ccg.tot -= sudoku[mc[0]][mc[1]]
+						break
+			for elim in mycls:
+				ccg.clls.discard(elim)
+			ocg.add(ccg)
+	
+	for myoc in ocg:
+		sls = GiveMeCombo(len(myoc.clls),myoc.tot,1)
+		for mc in myoc.clls:
+			rv[mc[0]][mc[1]].intersection_update(sls)
+	
+	return rv
+
+#Create subcages in line, column, nonet based on the fact that sum of all elements is known
+def InsideFortyFive(fv):
+	global sudoku
+	global cgs
+	global rows
+	global posnum
+	global cols
+	global div
+	
+	rv = fv[:][:]
+	
+	ff = cols * (cols+1) * 0.5
+	ocg = set()
+	
+	for row in range(rows):
+		mycls = {(row,i) for i in range(cols) if sudoku[row][i] == 0}
+		tt = ff
+		imcg = set()
+		for i in range(cols):
+			tt -= sudoku[row][i]
+		
+		for cg in cgs:
+			ct = int(cg.tot)
+			cclp = cg.clls
+			ccl = set()
+			
+			for cc in cclp:
+				if sudoku[cc[0]][cc[1]] == 0:
+					ccl.add(cc)
+				else:
+					ct -= sudoku[cc[0]][cc[1]]
+			
+			ce = ccl.intersection(mycls)
+			
+			
+			if len(ce) == 0:
+				continue
+			
+			if len(ce) == len(ccl):
+				for elm in ce:
+					mycls.discard(elm)
+				tt -= ct
+			else:
+				imcg.update(ce)
+		
+		mycg = MyCage(imcg, tt)
+		ocg.add(mycg)
+		
+	
+	
+	for col in range(cols):
+		mycls = {(i,col) for i in range(rows) if sudoku[i][col] == 0}
+		tt = ff
+		imcg = set()
+		for i in range(rows):
+			tt -= sudoku[i][col]
+		
+		for cg in cgs:
+			ct = int(cg.tot)
+			cclp = cg.clls
+			ccl = set()
+			
+			for cc in cclp:
+				if sudoku[cc[0]][cc[1]] == 0:
+					ccl.add(cc)
+				else:
+					ct -= sudoku[cc[0]][cc[1]]
+			
+			if len(ce) == 0:
+				continue
+			
+			if len(ce) == len(ccl):
+				for elm in ce:
+					mycls.discard(elm)
+				tt -= ct
+			else:
+				imcg.update(ce)
+		
+		mycg = MyCage(imcg, tt)
+		ocg.add(mycg)
+	
+	
+	for r in range(int(rows/div[1])):
+		for c in range(int(cols/div[0])):
+			mycls = {(r*div[1] + i,c*div[0] + j) for i in range(div[1]) for j in range(div[0]) if sudoku[r*div[1] + i][c*div[0] + j] == 0}
+			tt = ff
+			imcg = set()
+			for i in range(div[1]):
+				for j in range(div[0]):
+					tt -= sudoku[r*div[1] + i][c*div[0] + j]
+			
+			for cg in cgs:
+				ct = int(cg.tot)
+				cclp = cg.clls
+				ccl = set()
+				
+				for cc in cclp:
+					if sudoku[cc[0]][cc[1]] == 0:
+						ccl.add(cc)
+					else:
+						ct -= sudoku[cc[0]][cc[1]]
+				
+				if len(ce) == 0:
+					continue
+				
+				if len(ce) == len(ccl):
+					for elm in ce:
+						mycls.discard(elm)
+					tt -= ct
+				else:
+					imcg.update(ce)
+			
+			mycg = MyCage(imcg, tt)
+			ocg.add(mycg)
+	
+	
+	for myoc in ocg:
+		sls = GiveMeCombo(len(myoc.clls),myoc.tot,0)
+		for mc in myoc.clls:
+			rv[mc[0]][mc[1]].intersection_update(sls)
+	
+	return rv
 
 def EliminateSolutions(fv):
 	global rows
 	global cols
 	global div
 	global posnum
-	#print(fv)
 	doing = 1
 	while doing == 1:
 		doing = 0
@@ -397,13 +742,6 @@ def EliminateSolutions(fv):
 								fv[cntrr][div[0]*co + cs.index(max(cs))] = fv[cntrr][div[0]*co + cs.index(max(cs))].difference({cnt})
 								doing = 1
 	return fv
-
-def HardSolution(fv):
-	ev = EliminateSolutions(fv)
-	t = SimpleSolution(ev)
-	if t == 0:
-		t = IntermediateSolution(ev)
-	return t
 
 
 #Number of possible solutions in each cell
@@ -522,26 +860,37 @@ def Solving():
 		if mv == -1:
 			indeadend = 1
 	
+	kv = KillerElimination(fv)
 	
 	#Simple solution works for classic sudoku but is very unlikely to bring results for killer sudoku, therefore medium is also considered simple.
 	#New, killer-sudoku-specific medium difficulty introduced, for the case where the boundary condition of sums will lead to a result.
 	if ((ccn == 0 or CoherencyCheck(sudoku) == 1) and indeadend == 0):
-		a = SimpleSolution(fv)
+		a = SimpleSolution(kv)
 		if a == 0:
-			a = 2*IntermediateSolution(fv)
+			a = 2*IntermediateSolution(kv)
 			if a == 0:
-				kv = KillerElimination(fv)
-				a = 4*SimpleSolution(kv)
+				iv = InsideFortyFive(kv)
+				a = 4*SimpleSolution(iv)
 				if a == 0:
-					a = 8*IntermediateSolution(kv)
+					a = 8*IntermediateSolution(iv)
 					if a == 0:
-						sv = EliminateSolutions(kv)
-						a = 16*SimpleSolution(sv)
+						ov = OutsideFortyFive(iv)
+						a = 16*SimpleSolution(ov)
 						if a == 0:
-							a = 32*IntermediateSolution(sv)
+							a = 32*IntermediateSolution(ov)
 							if a == 0:
-								a = 64*GuessManager(sv)
-								ccn = 1
+								iev = EliminateInvalid(ov)
+								a = 64*SimpleSolution(iev)
+								if a == 0:
+									a = 128*IntermediateSolution(iev)
+									if a == 0:
+										sv = EliminateSolutions(iev)
+										a = 256*SimpleSolution(sv)
+										if a == 0:
+											a = 512*IntermediateSolution(sv)
+											if a == 0:
+												a = 1024*GuessManager(sv)
+												ccn = 1
 	
 	#If the current guess has brought to an incoherent status, do not waste loops on it
 	else:
